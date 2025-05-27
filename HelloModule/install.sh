@@ -1,19 +1,28 @@
 #!/bin/bash
 
-if [[ -d  build ]]; then
-  rm -rfv build
+if [[ ! -f CMakeLists.txt ]]; then
+  echo "CMakeLists.txt not found!"
+  exit 1
 fi
 
-mkdir build && \
-cmake -B build .
-cd build && \
-make
+if [[ -d  build ]]; then
+  echo "Remove 'build' directory."
+  rm -rf build
+fi
+
+# Configuring to use GCC 15
+export CXX="/opt/gcc-15/bin/g++"
+
+mkdir build && cmake -B build .
+cd build && make
 
 if [[ ! -f App ]]; then
-  echo "Something went wrong!"
-  exit 0
+  echo "Executable not found!"
+  exit 1
 fi
 
 echo "--------"
 ./App
 echo "--------"
+
+exit 0
