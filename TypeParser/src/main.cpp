@@ -2,231 +2,368 @@
  * This code focuses on training modern C++ and manipulating types and strings.
  */
 
-#include <charconv>
+#include <cassert>
 #include <print>
 #include <regex>
-#include <variant>
-#include <vector>
+#include <string_view>
 
 // --- Structs and Type Aliases ---
-struct Status {
+struct Data {
   bool status = false;
-  std::string message;
+  std::string value;
+};
+
+struct Dict {
+  std::string key;
+  std::variant<int, float, char, std::string> value;
 };
 
 // Define a variant type for the possible return types of parsed data
-using ParsedData = std::variant<std::vector<int>, std::vector<float>,
-                                std::vector<std::string>>;
+using ParsedData =
+    std::variant<std::vector<int>, std::vector<float>, std::vector<char>,
+                 std::vector<std::string>, std::vector<Dict>>;
+
+// --- Constants ---
+const std::string_view WHITESPACE = " \t\n\r\f\v";
 
 // --- Helper Functions ---
-auto match(std::string_view value, std::string_view pattern,
-           std::string_view message) -> Status {
-  auto rgx = std::regex(std::string(pattern));
-  auto result = std::regex_match(std::string(value), rgx);
-  return {result, result ? "message" : "not " + std::string(message)};
+auto trim_left(std::string_view input,
+               std::string_view chars_to_trim = WHITESPACE) -> std::string {
+  size_t first_char = input.find_first_not_of(chars_to_trim);
+  if (std::string_view::npos == first_char) {
+    return {};
+  }
+  return std::string(input.substr(first_char));
 }
 
-auto isInteger(std::string_view value) -> Status {
-  return match(value, std::string_view("^[+,-]?\\d*"), "integer");
+auto trim_right(std::string_view input,
+                std::string_view chars_to_trim = WHITESPACE) -> std::string {
+  size_t last_char = input.find_last_not_of(chars_to_trim);
+  if (std::string_view::npos == last_char) {
+    return {};
+  }
+  return std::string(input.substr(0, last_char + 1));
 }
 
-auto isFloat(std::string_view value) -> Status {
-  // Matches integers (e.g., "123") and floats (e.g., "123.45", ".5", "5.")
-  return match(value, "^[+-]?(\\d+\\.?\\d*|\\d*\\.\\d+)$", "float");
+auto trim(std::string_view input, std::string_view chars_to_trim = WHITESPACE)
+    -> std::string {
+  auto trimmed_left = trim_left(input, chars_to_trim);
+  return trim_right(trimmed_left, chars_to_trim);
 }
 
-auto isCharacter(std::string_view value) -> Status {
-  return match(value, std::string_view("^'.'$"), "character");
+// Funtion to split string_view
+auto split(std::string_view sv, std::string_view delimiter)
+    -> std::vector<std::string_view> {
+  std::vector<std::string_view> result;
+  size_t start = 0;
+  size_t end = sv.find(delimiter);
+
+  while (end != std::string_view::npos) {
+    result.push_back(sv.substr(start, end - start));
+    start = end + delimiter.length();
+    end = sv.find(delimiter, start);
+  }
+  // Add the last part
+  result.push_back(sv.substr(start));
+  return result;
 }
 
-auto isString(std::string_view value) -> Status {
-  return match(value, std::string_view("^'.*'$"), "string");
-}
-
-auto isGroup(std::string_view value) -> Status {
-  return match(value, std::string_view("^\\{.*\\}$"), "group");
-}
-
-// Function to trim leading/trailing whitespace
-std::string_view trim(std::string_view s) {
-  const auto pattern = " \t\n\r\f\v";
-  s.remove_prefix(std::min(s.find_first_not_of(pattern), s.size()));
-  s.remove_suffix(
-      std::min(s.size() - s.find_last_not_of(pattern) - 1, s.size()));
+auto remove_char(std::string_view input, char char_to_remove) -> std::string {
+  std::string s{input};
+  auto end_it = std::remove(s.begin(), s.end(), char_to_remove);
+  s.erase(end_it, s.end());
   return s;
 }
 
-// Function to split
-// To do
+auto clean(std::string_view input) -> std::string {
+  return remove_char(input, ' ');
+}
 
-// --- Core Processing Function ---
-ParsedData process(std::string_view input) {
-  // First check
-  if (input.empty()) {
-    return std::vector<std::string>{};
+auto match(std::string_view value, std::string_view pattern) -> Data {
+  auto rgx = std::regex(std::string(pattern));
+  auto result = std::regex_match(std::string(value), rgx);
+  return {result, result ? std::string(value) : ""};
+}
+
+auto isNumber(std::string_view input) -> Data {
+  // Check if there is a digit
+  if (!std::regex_search(input.begin(), input.end(), std::regex("\\d"))) {
+    return {false, ""}; // It has no digit
   }
 
-  // Trim whitespace from the input
-  input = trim(input);
-
-  Status result;
-
-  // 1. Check if it is a group of values
-  result = isGroup(input);
-  if (result.status) {
-    // Remove leading '{' and trailing '}'
-    std::string_view content = input.substr(1, input.length() - 2);
-
-    // Find individual elements
-    std::vector<std::string_view> elements;
-    size_t start = 0;
-    size_t comma_pos = 0;
-    int brace_count =
-        0; // To handle nested groups, though not fully implemented here
-    int quote_count = 0; // To handle commas inside strings
-
-    for (size_t i = 0; i < content.length(); ++i) {
-      if (content[i] == '\'') {
-        quote_count++;
-      } else if (content[i] == '{') {
-        brace_count++;
-      } else if (content[i] == '}') {
-        brace_count--;
-      } else if (content[i] == ',' && brace_count == 0 &&
-                 quote_count % 2 == 0) {
-        elements.push_back(trim(content.substr(start, i - start)));
-        start = i + 1;
-      }
+  // Check if there is a signal or if it is fractional
+  auto str = clean(input);
+  if (str.size() >= 2) {
+    if (str.starts_with('+')) {
+      str = str.substr(1, str.length() - 1);
     }
-    elements.push_back(trim(content.substr(start))); // Add the last element
-
-    // Try as integers
-    std::vector<int> int_vec;
-    bool all_integers = true;
-    for (const auto &elem_str : elements) {
-      int val;
-      auto [ptr, ec] = std::from_chars(elem_str.data(),
-                                       elem_str.data() + elem_str.size(), val);
-      if (ec == std::errc() && ptr == elem_str.data() + elem_str.size()) {
-        int_vec.push_back(val);
-      } else {
-        all_integers = false;
-        break;
-      }
+    if (str.starts_with('.')) {
+      str = std::format("0{}", str);
     }
-    if (all_integers && !int_vec.empty()) {
-      return int_vec;
+    if (str.at(0) == '-' && str.at(1) == '.') {
+      str = str.substr(2, str.length() - 1);
+      str = std::format("-0.{}", str);
     }
-
-    // Try as floats
-    std::vector<float> float_vec;
-    bool all_floats = true;
-    for (const auto &elem_str : elements) {
-      float val;
-      auto [ptr, ec] = std::from_chars(elem_str.data(),
-                                       elem_str.data() + elem_str.size(), val);
-      if (ec == std::errc() && ptr == elem_str.data() + elem_str.size()) {
-        float_vec.push_back(val);
-      } else {
-        all_floats = false;
-        break;
-      }
-    }
-    if (all_floats && !float_vec.empty()) {
-      return float_vec;
-    }
-
-    // Default to strings if not all integers or floats
-    std::vector<std::string> string_vec;
-    for (const auto &elem_str : elements) {
-      Status str_status = isString(elem_str);
-      if (str_status.status) {
-        // Remove quotes from string literals
-        string_vec.push_back(
-            std::string(elem_str.substr(1, elem_str.length() - 2)));
-      } else {
-        string_vec.push_back(
-            std::string(elem_str)); // Keep as is if not a string literal
-      }
-    }
-    return string_vec;
-  }
-
-  // 2. Check if it is a number (float or integer)
-  // 2.1 Check if it is a float
-  result = isFloat(input);
-  if (result.status) {
-    float val;
-    auto [ptr, ec] =
-        std::from_chars(input.data(), input.data() + input.size(), val);
-    if (ec == std::errc() && ptr == input.data() + input.size()) {
-      return std::vector<float>{val};
+    if (str.ends_with('.')) {
+      str = std::format("{}0", str);
     }
   }
 
-  // 2.2 Check if it is a integer
-  result = isInteger(input);
-  if (result.status) {
-    int val;
-    auto [ptr, ec] =
-        std::from_chars(input.data(), input.data() + input.size(), val);
-    if (ec == std::errc() && ptr == input.data() + input.size()) {
-      return std::vector<int>{val};
+  // Check if it is number
+  auto pattern = "^[+-]?(\\d+\\.?\\d*|\\d*\\.\\d+)$";
+  return match(str, pattern);
+}
+
+auto isInteger(std::string_view input) -> Data {
+  auto pattern = "^-?\\d*";
+  return match(isNumber(input).value, pattern);
+}
+
+auto isFloat(std::string_view input) -> Data {
+  auto pattern = "^[+-]?\\d+\\.\\d*$";
+  return match(isNumber(input).value, pattern);
+}
+
+auto isChar(std::string_view input) -> Data {
+  auto result = input.size() == 1;
+  return {result, result ? std::string(input) : ""};
+}
+
+auto isString(std::string_view input) -> Data {
+  auto pattern = "^'.*'$";
+  return {match(clean(input), pattern).status, std::string(input)};
+}
+
+auto isDictionary(std::string_view input) -> Data {
+  auto pattern = "^\\'.+'\\s*:\\s*'?.*'?$";
+  return match(clean(input), pattern);
+}
+
+auto isGroup(std::string_view input) -> Data {
+  auto pattern = "^\\{.*\\}$";
+  return match(clean(input), pattern);
+}
+
+// Funtion convert string to number (integer or float)
+template <typename T>
+auto stringviewToNumber(std::string_view sv) -> std::variant<int, float> {
+  T val;
+  auto [ptr, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), val);
+  if (ec == std::errc() && ptr == sv.data() + sv.size()) {
+    if (val == static_cast<int>(val)) {
+      return static_cast<int>(val);
     }
+    return static_cast<float>(val);
+  }
+  return {};
+}
+
+auto stringviewToDict(std::string_view input) -> std::variant<bool, Dict> {
+  auto result = isDictionary(input);
+  if (!result.status) {
+    return false;
+  }
+  // Prepare
+  auto values = split(input, ":");
+  if (values.size() != 2) {
+    return false;
   }
 
-  // 3. Check if it is a string or character
-  result = isString(input);
-  if (result.status) {
-    // Remove quotes from string literals
-    return std::vector<std::string>{
-        std::string(input.substr(1, input.length() - 2))};
-  }
-
-  // If nothing matches, return an empty vector of strings as a fallback
-  return std::vector<std::string>{};
+  return Dict{"ops", int(10)};
 }
 
 // --- Viewer Function (uses std::visit for variant) ---
+template <class... Ts> struct overloads : Ts... {
+  using Ts::operator()...;
+};
+
 void view(const ParsedData &data) {
-  std::visit(
-      [](const auto &vec) {
-        if (vec.empty()) {
-          std::println("Empty or unrecognized input.");
-          return;
-        }
+  const auto visitor = overloads{
+      [](std::vector<int> vec) {
         for (const auto &item : vec) {
           std::print("{} ", item);
         }
-        std::println(); // Newline after printing the vector
+        std::println("{}", vec.empty() ? "Unable to parse." : "");
       },
-      data);
+      [](std::vector<float> vec) {
+        for (const auto &item : vec) {
+          std::print("{} ", item);
+        }
+        std::println("{}", vec.empty() ? "Unable to parse." : "");
+      },
+      [](std::vector<char> vec) {
+        for (const auto &item : vec) {
+          std::print("{} ", item);
+        }
+        std::println("{}", vec.empty() ? "Unable to parse." : "");
+      },
+      [](std::vector<std::string> vec) {
+        for (const auto &item : vec) {
+          std::print("{} ", item);
+        }
+        std::println("{}", vec.empty() ? "Unable to parse." : "");
+      },
+      [](std::vector<Dict> vec) {
+        for (const auto &item : vec) {
+          // std::print("Key: {}, Value: {}; ", item.key, item.value);
+        }
+        std::println("{}", vec.empty() ? "Unable to parse." : "");
+      },
+  };
+  std::visit(visitor, data);
 }
 
+auto process(std::string_view) -> ParsedData { return std::vector<int>{10}; }
+
+// --- Test ---
+void test1() {
+
+  auto check = [](std::function<Data(std::string_view)> func, std::string value,
+                  std::string expected) -> bool {
+    std::string result = func(value).value;
+    auto test = result == expected;
+    // std::println("Value: '{}'\nExpected: '{}'\nResult: '{}' [{}]", value,
+    //              expected, result, test);
+    return test;
+  };
+
+  // Invalid Numbers
+  assert(check(isNumber, "", ""));
+  assert(check(isNumber, " ", ""));
+  assert(check(isNumber, "A", ""));
+  assert(check(isNumber, "?", ""));
+  assert(check(isNumber, ".", ""));
+  assert(check(isNumber, "-", ""));
+  assert(check(isNumber, "+", ""));
+  assert(check(isNumber, "+.", ""));
+  assert(check(isNumber, "-.", ""));
+  assert(check(isNumber, ".-", ""));
+  assert(check(isNumber, ".+", ""));
+  assert(check(isNumber, ".1a", ""));
+  assert(check(isNumber, "1.a", ""));
+  assert(check(isNumber, "1. a", ""));
+  assert(check(isNumber, "+.1a", ""));
+  assert(check(isNumber, "+1.a", ""));
+  assert(check(isNumber, "-1.0 a", ""));
+
+  // Numbers
+  assert(check(isNumber, ".1", "0.1"));
+  assert(check(isNumber, "1.", "1.0"));
+  assert(check(isNumber, "+.1", "0.1"));
+  assert(check(isNumber, "-.1", "-0.1"));
+  assert(check(isNumber, "+1.", "1.0"));
+  assert(check(isNumber, "-1.", "-1.0"));
+  assert(check(isNumber, "-1.1", "-1.1"));
+  assert(check(isNumber, "+1.2", "1.2"));
+  assert(check(isNumber, "+1", "1"));
+  assert(check(isNumber, "-1", "-1"));
+  assert(check(isNumber, "-. 1", "-0.1"));
+  assert(check(isNumber, "- 1.", "-1.0"));
+  assert(check(isNumber, "+1 .0 ", "1.0"));
+  assert(check(isNumber, "+   1 ", "1"));
+  assert(check(isNumber, "- 1 ", "-1"));
+
+  // Integers
+  assert(check(isInteger, "10", "10"));
+  assert(check(isInteger, "+10", "10"));
+  assert(check(isInteger, "-10", "-10"));
+  assert(check(isInteger, "-101", "-101"));
+  assert(check(isInteger, "- 1", "-1"));
+  assert(check(isInteger, "+1 ", "1"));
+  assert(check(isInteger, "+   1 ", "1"));
+  assert(check(isInteger, "- 1 ", "-1"));
+
+  // Floats
+  assert(check(isFloat, ".1", "0.1"));
+  assert(check(isFloat, "1.", "1.0"));
+  assert(check(isFloat, "+.1", "0.1"));
+  assert(check(isFloat, "-.1", "-0.1"));
+  assert(check(isFloat, "+1.", "1.0"));
+  assert(check(isFloat, "-1.", "-1.0"));
+  assert(check(isFloat, "-1.1", "-1.1"));
+  assert(check(isFloat, "+1.2", "1.2"));
+  assert(check(isFloat, "-. 1", "-0.1"));
+  assert(check(isFloat, "- 1.", "-1.0"));
+  assert(check(isFloat, "+1 .0 ", "1.0"));
+
+  // Characters
+  assert(check(isChar, "", ""));
+  assert(check(isChar, "..", ""));
+  assert(check(isChar, " ", " "));
+  assert(check(isChar, "A", "A"));
+  assert(check(isChar, "a", "a"));
+
+  // String
+  assert(check(isString, "", ""));
+  assert(check(isString, " ", " "));
+  assert(check(isString, "A", "A"));
+  assert(check(isString, "a", "a"));
+  assert(check(isString, "..", ".."));
+  assert(check(isString, "10", "10"));
+  assert(check(isString, "-10.0", "-10.0"));
+
+  // Dictionary
+  assert(check(isDictionary, "", ""));
+  assert(check(isDictionary, " ", ""));
+  assert(check(isDictionary, ".", ""));
+  assert(check(isDictionary, "A", ""));
+  assert(check(isDictionary, "10", ""));
+  assert(check(isDictionary, ":", ""));
+  assert(check(isDictionary, ":10", ""));
+  assert(check(isDictionary, "A:10", ""));
+  assert(check(isDictionary, "'':10", ""));
+  assert(check(isDictionary, "'A':'10'", "'A':'10'"));
+  assert(check(isDictionary, "'A':-10", "'A':-10"));
+  assert(check(isDictionary, "' A ' : - 10", "'A':-10"));
+  assert(check(isDictionary, "' A ' : ' Hello '", "'A':'Hello'"));
+
+  // Group
+  assert(check(isGroup, "", ""));
+  assert(check(isGroup, " ", ""));
+  assert(check(isGroup, "A", ""));
+  assert(check(isGroup, "{", ""));
+  assert(check(isGroup, "}", ""));
+  assert(check(isGroup, "}{", ""));
+  assert(check(isGroup, "}{}{", ""));
+  assert(check(isGroup, "[A]", ""));
+  assert(check(isGroup, "{{}}", "{{}}"));
+  assert(check(isGroup, "{A}", "{A}"));
+}
+
+auto test2() {
+  auto typeOf = [](std::variant<int, float> p) -> std::string {
+    size_t index = p.index();
+    std::vector<std::string> type{"int", "float"};
+    return index >= 0 && index < type.size() ? type.at(index) : "undefined";
+  };
+
+  assert(typeOf(stringviewToNumber<int>("10")) == "int");
+  assert(typeOf(stringviewToNumber<int>("-10")) == "int");
+  assert(typeOf(stringviewToNumber<int>("+10")) == "int");
+  assert(typeOf(stringviewToNumber<int>(" + 10 ")) == "int");
+  assert(typeOf(stringviewToNumber<int>("10.5")) == "int");
+  assert(typeOf(stringviewToNumber<int>("10.")) == "int");
+  assert(typeOf(stringviewToNumber<float>("10")) == "int");
+  assert(typeOf(stringviewToNumber<float>("-10")) == "int");
+  assert(typeOf(stringviewToNumber<float>("+10")) == "int");
+  assert(typeOf(stringviewToNumber<float>(" + 1 0")) == "int");
+  assert(typeOf(stringviewToNumber<float>(" + 1 . 0")) == "int");
+  assert(typeOf(stringviewToNumber<float>("10.5")) == "float");
+  assert(typeOf(stringviewToNumber<float>("-10.1")) == "float");
+  assert(typeOf(stringviewToNumber<float>("+ 10 . 5")) == "float");
+}
+
+auto test() {
+  // Simple check
+  // test1();
+
+  // Check stringviewToNumber
+  test2();
+}
+
+// --- Main ---
 auto main() -> int {
-
-  // Input
-  std::vector<std::string_view> data{
-      "0",                                     // integer
-      "-1",                                    // negative integer
-      "2.5",                                   // fractional number
-      "'A'",                                   // character
-      "'Hello'",                               // string
-      "'Hello World'",                         // string with space
-      "{-1, -2, +3, +4, 5, 6, 7, -8, 9, -10}", // vector of integers
-      "{1, 2.5, +3, 4, -5, 6, 7.9, 8, 9, 10}", // vector of fractional number
-      "{'A', 'B', 'C', '1.5', '+10.5'}",       // vector of strings
-      "{'A1 : 10', 'A2' : 'Hello'}"};          // dictionary
-
-  // Processing and output
-  std::println("--- Processing Inputs ---");
-  for (auto item : data) {
-    std::println("Input: \"{}\"", item);
-    ParsedData p = process(item);
-    std::print("Output: ");
-    view(p);
-    std::println("---");
-  }
+  test();
 
   return 0;
 }
