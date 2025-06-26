@@ -15,7 +15,11 @@ struct Data {
 
 struct Dict {
   std::string key;
-  std::variant<int, float, char, std::string> value;
+  std::string value;
+
+  auto compare(Dict Other) -> bool {
+    return key == Other.key && value == Other.value;
+  }
 };
 
 // Define a variant type for the possible return types of parsed data
@@ -146,30 +150,43 @@ auto isGroup(std::string_view input) -> Data {
 
 // Funtion convert string to number (integer or float)
 template <typename T>
-auto stringviewToNumber(std::string_view sv) -> std::variant<int, float> {
-  T val;
-  auto [ptr, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), val);
-  if (ec == std::errc() && ptr == sv.data() + sv.size()) {
-    if (val == static_cast<int>(val)) {
-      return static_cast<int>(val);
+auto stringviewToNumber(std::string_view sv) -> std::variant<int, float, bool> {
+  auto result = isNumber(sv);
+  if (result.status) {
+    T val;
+    std::string_view s = result.value;
+    auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), val);
+    if (ec == std::errc() && ptr == s.data() + s.size()) {
+      if (val == static_cast<int>(val)) {
+        return static_cast<int>(val);
+      }
+      return static_cast<float>(val);
     }
-    return static_cast<float>(val);
   }
-  return {};
+  return false;
 }
 
-auto stringviewToDict(std::string_view input) -> std::variant<bool, Dict> {
+auto stringviewToDict(std::string_view input) -> std::variant<Dict, bool> {
   auto result = isDictionary(input);
-  if (!result.status) {
-    return false;
-  }
-  // Prepare
-  auto values = split(input, ":");
-  if (values.size() != 2) {
-    return false;
+  if (result.status) {
+    // Prepare
+    auto values = split(input, ":");
+    if (values.size() != 2) {
+      return false;
+    }
+    Data result;
+    result = isNumber(values[0]);
+    if (result.status) {
+      return false;
+    }
+    result = isString(values[0]);
+    if (!result.status) {
+      return false;
+    }
+    return Dict{result.value, std::string(values[1])};
   }
 
-  return Dict{"ops", int(10)};
+  return false;
 }
 
 // --- Viewer Function (uses std::visit for variant) ---
@@ -205,7 +222,7 @@ void view(const ParsedData &data) {
       },
       [](std::vector<Dict> vec) {
         for (const auto &item : vec) {
-          // std::print("Key: {}, Value: {}; ", item.key, item.value);
+          std::print("Key: {}, Value: {}; ", item.key, item.value);
         }
         std::println("{}", vec.empty() ? "Unable to parse." : "");
       },
@@ -213,7 +230,13 @@ void view(const ParsedData &data) {
   std::visit(visitor, data);
 }
 
-auto process(std::string_view) -> ParsedData { return std::vector<int>{10}; }
+auto process(std::string_view input) -> ParsedData {
+  // First check
+  if (input.empty()) {
+    return std::vector<std::string>{};
+  }
+  return {};
+}
 
 // --- Test ---
 void test1() {
@@ -331,34 +354,57 @@ void test1() {
 }
 
 auto test2() {
-  auto typeOf = [](std::variant<int, float> p) -> std::string {
+  auto typeOf = [](std::variant<int, float, bool> p) -> std::string {
     size_t index = p.index();
-    std::vector<std::string> type{"int", "float"};
-    return index >= 0 && index < type.size() ? type.at(index) : "undefined";
+    std::vector<std::string> type{"int", "float", "undefined"};
+    return index >= 0 && index < type.size() ? type.at(index) : type.back();
   };
 
   assert(typeOf(stringviewToNumber<int>("10")) == "int");
   assert(typeOf(stringviewToNumber<int>("-10")) == "int");
   assert(typeOf(stringviewToNumber<int>("+10")) == "int");
-  assert(typeOf(stringviewToNumber<int>(" + 10 ")) == "int");
-  assert(typeOf(stringviewToNumber<int>("10.5")) == "int");
-  assert(typeOf(stringviewToNumber<int>("10.")) == "int");
+  assert(typeOf(stringviewToNumber<int>("+ 10")) == "int");
+  assert(typeOf(stringviewToNumber<int>("10.5")) == "undefined");
+  assert(typeOf(stringviewToNumber<int>("10.")) == "undefined");
   assert(typeOf(stringviewToNumber<float>("10")) == "int");
   assert(typeOf(stringviewToNumber<float>("-10")) == "int");
   assert(typeOf(stringviewToNumber<float>("+10")) == "int");
-  assert(typeOf(stringviewToNumber<float>(" + 1 0")) == "int");
-  assert(typeOf(stringviewToNumber<float>(" + 1 . 0")) == "int");
+  assert(typeOf(stringviewToNumber<float>("+ 1 0")) == "int");
+  assert(typeOf(stringviewToNumber<float>("+ 1 . 0")) == "int");
   assert(typeOf(stringviewToNumber<float>("10.5")) == "float");
   assert(typeOf(stringviewToNumber<float>("-10.1")) == "float");
   assert(typeOf(stringviewToNumber<float>("+ 10 . 5")) == "float");
 }
 
+auto test3() {
+  // stringviewToDict(std::string_view input) -> std::variant<Dict, bool>
+  auto typeOf = [](std::variant<Dict, bool> p) -> std::string {
+    size_t index = p.index();
+    std::vector<std::string> type{"dict", "false", "undefined"};
+    return index >= 0 && index < type.size() ? type.at(index) : type.back();
+  };
+
+  assert(typeOf(stringviewToDict("a")) == "false");
+  assert(typeOf(stringviewToDict("1")) == "false");
+  assert(typeOf(stringviewToDict("1 : 'a")) == "false");
+  assert(typeOf(stringviewToDict("'A' : 10")) == "dict");
+
+  auto a = stringviewToDict("'A' : 'hello'");
+  Dict b{"'A' ", " 'hello'"};
+  assert(typeOf(a) == "dict");
+  Dict c = std::get<Dict>(a);
+  assert(b.compare(std::get<Dict>(a)));
+}
+
 auto test() {
   // Simple check
-  // test1();
+  test1();
 
   // Check stringviewToNumber
   test2();
+
+  // Check stringviewToDict
+  test3();
 }
 
 // --- Main ---
