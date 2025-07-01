@@ -6,8 +6,8 @@
 #include <cassert>
 #include <print>
 #include <string_view>
-#include <vector>
 #include <variant>
+#include <vector>
 
 // --- Structs and Type Aliases ---
 struct Data {
@@ -27,43 +27,58 @@ struct Dict {
 // Define a variant type for the possible return types of parsed data
 using ParsedData =
     std::variant<std::vector<int>, std::vector<float>, std::vector<char>,
-                 std::vector<std::string>, std::vector<Dict>>;
+                 std::vector<std::string>, std::vector<Dict>, bool>;
 
 // --- Constants ---
 const std::string_view WHITESPACE = " \t\n\r\f\v";
 
 // --- Helper Functions ---
+
+// Function removes character to the left
 auto trim_left(std::string_view input,
                std::string_view chars_to_trim = WHITESPACE) -> std::string;
 
+// Function removes character to the left
 auto trim_right(std::string_view input,
-                std::string_view chars_to_trim = WHITESPACE) -> std::string ;
+                std::string_view chars_to_trim = WHITESPACE) -> std::string;
 
+// Function removes characters at the ends
 auto trim(std::string_view input, std::string_view chars_to_trim = WHITESPACE)
-    -> std::string ;
+    -> std::string;
+
+// Function removes all characters found
+auto remove_char(std::string_view input, char char_to_remove) -> std::string;
+
+// Function removes all spaces
+auto clean(std::string_view input) -> std::string;
 
 // Funtion to split string_view
 auto split(std::string_view sv, std::string_view delimiter)
-    -> std::vector<std::string_view> ;
+    -> std::vector<std::string_view>;
 
-auto remove_char(std::string_view input, char char_to_remove) -> std::string ;
+// Function checks regular expression
+auto match(std::string_view value, std::string_view pattern) -> Data;
 
-auto clean(std::string_view input) -> std::string ;
+// Function checks if string can be number
+auto isNumber(std::string_view input) -> Data;
 
-auto match(std::string_view value, std::string_view pattern) -> Data ;
+// Function checks if string can be integer
+auto isInteger(std::string_view input) -> Data;
 
-auto isNumber(std::string_view input) -> Data ;
+// Function to check if string can be a fractional number
+auto isFloat(std::string_view input) -> Data;
 
-auto isInteger(std::string_view input) -> Data ;
+// Function to check if string can be character
+auto isChar(std::string_view input) -> Data;
 
-auto isFloat(std::string_view input) -> Data ;
+// Function checks if string is string
+auto isString(std::string_view input) -> Data;
 
-auto isChar(std::string_view input) -> Data ;
-auto isString(std::string_view input) -> Data ;
+// Function checks if string can be a key and value structure
+auto isDictionary(std::string_view input) -> Data;
 
-auto isDictionary(std::string_view input) -> Data ;
-
-auto isGroup(std::string_view input) -> Data ;
+// Function checks if string can be a set of strings
+auto isGroup(std::string_view input) -> Data;
 
 // Funtion convert string to number (integer or float)
 template <typename T>
@@ -83,14 +98,16 @@ auto stringviewToNumber(std::string_view sv) -> std::variant<int, float, bool> {
   return false;
 }
 
-// Function convert string to struct
-auto stringviewToDict(std::string_view input) -> std::variant<Dict, bool> ;
+// Function converts string into key and value structure
+auto stringviewToDict(std::string_view input) -> std::variant<Dict, bool>;
 
 // --- Viewer Function (uses std::visit for variant) ---
 template <class... Ts> struct overloads : Ts... {
   using Ts::operator()...;
 };
 
-void view(const ParsedData &data) ;
+// Displays the converted dataset
+void view(const ParsedData &data);
 
-auto process(std::string_view input) -> ParsedData ;
+// Process input and convert type
+auto process(std::string_view input) -> ParsedData;

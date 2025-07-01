@@ -164,6 +164,62 @@ auto test3() {
   assert(b.compare(std::get<Dict>(a)));
 }
 
+auto test4() {
+
+  auto typeOf =
+      [](const ParsedData &p) -> std::string { // Pass by const reference
+    size_t index = p.index();
+    std::vector<std::string> type_names{"integer", "fractional", "character",
+                                        "string",  "dictionary", "empty"};
+    // Ensure index is valid before accessing
+    if (index < type_names.size()) {
+      return type_names.at(index);
+    }
+    return "undefined";
+  };
+
+  // Input
+  std::vector<std::vector<std::string_view>> data{
+      {"0", "integer"},      // integer
+      {"-1", "integer"},     // negative integer
+      {".5", "fractional"},  // fractional number (leading dot)
+      {"5.", "integer"},     // integer, number (trailing dot)
+      {"+.5", "fractional"}, // fractional number (with sign and leading dot)
+      {"2.5", "fractional"}, // fractional number
+      {"'A'", "character"},  // character
+      {"'Hello'", "string"}, // string
+      {"'Hello World'", "string"},                       // string with space
+      {"{}", "empty"},                                   // Empty group
+      {"{10,11,12,13,14,15}", "integer"},                // vector of integers
+      {"{0.1,1.2,2.3,3.4,4.5,5.6}", "fractional"},       // vector of floats
+      {"{-1, -2, +3, +4, 5, -10}", "integer"},           // vector of integers
+      {"{1, 2.5, +3, 4, -5, 6, 7.9, 10}", "fractional"}, // vector of fractional
+      {"{'A', 'B', 'C', '1.5', '+10.5'}", "string"},     // vector of strings
+      {"{'a' : '1', 'b' : 'Hi'}", "dictionary"},         // dictionary
+      {"{'K1' : 10, 'K2' : -2.5, 'K3' : 'Hi'}", "dictionary"}, // dictionary
+      {" '  some string  ' ", "string"},  // String with external whitespace
+      {" {-1 , +2.5, 'test'} ", "string"} // Mixed
+  };
+
+  // Processing and output
+  std::println("--- Processing Inputs ---");
+  for (auto item : data) {
+    auto itemValue = item.at(0);
+    ParsedData p = process(item.at(0));
+    auto itemType = typeOf(p);
+    auto expected = item.at(1);
+    std::println("Input: \"{}\"", itemValue);
+    std::print("Output: ");
+    view(p);
+    std::println("Type: {}", itemType);
+    std::println("---");
+    if (itemType != expected) {
+      std::println("Expected: '{}'", expected);
+      break;
+    }
+  }
+}
+
 auto test() {
   // Simple check
   test1();
@@ -174,13 +230,16 @@ auto test() {
   // Check stringviewToDict
   test3();
 
+  // Check processing
+  test4();
+
   std::println("Test completed!");
 }
 
 // --- Main ---
 auto main() -> int {
 
-  test();
+  test4();
 
   return 0;
 }
