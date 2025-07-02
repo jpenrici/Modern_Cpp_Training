@@ -37,6 +37,24 @@ auto clean(std::string_view input) -> std::string {
   return remove_char(input, ' ');
 }
 
+auto split(const std::string &str, const char &delimiter)
+    -> std::vector<std::string> {
+  std::vector<std::string> result;
+  std::string strTemp;
+  for (char character : str) {
+    if (character == delimiter) {
+      result.push_back(strTemp);
+      strTemp.clear();
+    } else {
+      strTemp += character;
+    }
+  }
+  if (!strTemp.empty()) {
+    result.push_back(strTemp);
+  }
+  return result;
+}
+
 auto split(std::string_view sv, std::string_view delimiter)
     -> std::vector<std::string_view> {
   std::vector<std::string_view> result;
@@ -185,25 +203,25 @@ auto process(std::string_view input) -> ParsedData {
   }
 
   // Trim whitespace from the input
-  input = trim(input);
+  auto trimmed_input = trim(input);
 
   // Data structure to hold elements found, initially just the input itself
-  std::vector<std::string_view> elements;
+  std::vector<std::string> elements;
   Data data;
 
   // 1. Check if it is a group of values
-  data = isGroup(input);
+  data = isGroup(trimmed_input);
   if (data.status) {
     // Remove leading '{' and trailing '}'
-    std::string_view content = input.substr(1, input.length() - 2);
+    std::string content = trimmed_input.substr(1, trimmed_input.length() - 2);
     // Split the content by comma for individual elements
-    elements = split(content, ",");
+    elements = split(content, ',');
     if (elements.empty()) {
-      return true; // Nothing to do
+      return true;
     }
   } else {
     // If not a group, the input itself is the single element to process
-    elements.push_back(input);
+    elements.push_back(trimmed_input);
   }
 
   // Vectors to collect parsed types
@@ -242,7 +260,6 @@ auto process(std::string_view input) -> ParsedData {
 
     data = isDictionary(trimmed_e);
     if (data.status) {
-      std::println("Dict: {}", data.value);
       auto num_variant = stringviewToDict(data.value);
       if (std::holds_alternative<Dict>(num_variant)) {
         dictionary.push_back(std::get<Dict>(num_variant));
@@ -273,11 +290,28 @@ auto process(std::string_view input) -> ParsedData {
   if (floats.size() == expectedSize) {
     return floats;
   }
+  if (integers.size() + floats.size() == expectedSize) {
+    std::vector<float> n;
+    for (auto &i : integers) {
+      n.push_back(i);
+    }
+    for (auto &f : floats) {
+      n.push_back(f);
+    }
+    return n;
+  }
   if (characters.size() == expectedSize) {
     return characters;
   }
   if (strings.size() == expectedSize) {
     return strings;
+  }
+  if (strings.size() > 0) {
+    std::vector<std::string> s;
+    for (auto &v : elements) {
+      s.push_back(v);
+    }
+    return s;
   }
 
   return false; // Unable to parse

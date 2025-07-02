@@ -52,6 +52,10 @@ auto remove_char(std::string_view input, char char_to_remove) -> std::string;
 // Function removes all spaces
 auto clean(std::string_view input) -> std::string;
 
+// Funtion to split string
+auto split(const std::string &str, const char &delimiter)
+    -> std::vector<std::string>;
+
 // Funtion to split string_view
 auto split(std::string_view sv, std::string_view delimiter)
     -> std::vector<std::string_view>;

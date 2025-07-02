@@ -6,7 +6,129 @@
 
 #include <functional>
 
+// --- Declaration ---
+void test();
+void test1();
+void test2();
+void test3();
+void test4(std::vector<std::vector<std::string_view>> vec);
+
+// --- Main ---
+auto main() -> int {
+
+  test();
+
+  return 0;
+}
+
 // --- Test ---
+void test() {
+  test1(); // Simple check
+  test2(); // Check stringviewToNumber
+  test3(); // Check stringviewToDict
+
+  std::vector<std::vector<std::string_view>> data{
+      {"0", "integer"},      // integer
+      {"-1", "integer"},     // negative integer
+      {".5", "fractional"},  // fractional number (leading dot)
+      {"5.", "integer"},     // integer, number (trailing dot)
+      {"+.5", "fractional"}, // fractional number (with sign and leading dot)
+      {"2.5", "fractional"}, // fractional number
+      {"'A'", "character"},  // character
+      {"'Hello'", "string"}, // string
+      {"'Hello World'", "string"},                       // string with space
+      {"{}", "empty"},                                   // Empty group
+      {"{10,11,12,13,14,15}", "integer"},                // vector of integers
+      {"{0.1,1.2,2.3,3.4,4.5,5.6}", "fractional"},       // vector of floats
+      {"{-1, -2, +3, +4, 5, -10}", "integer"},           // vector of integers
+      {"{1, 2.5, +3, 4, -5, 6, 7.9, 10}", "fractional"}, // vector of fractional
+      {"{'A', 'B', 'C', '1.5', '+10.5'}", "string"},     // vector of strings
+      {"{'a' : '1', 'b' : 'Hi'}", "dictionary"},         // dictionary
+      {"{'K1' : 10, 'K2' : -2.5, 'K3' : 'Hi'}", "dictionary"}, // dictionary
+      {" '  some string  ' ", "string"},  // String with external whitespace
+      {" {-1 , +2.5, 'test'} ", "string"} // Mixed
+  };
+  test4(data); // Check processing
+
+  std::println("Test completed!");
+}
+
+void test4(std::vector<std::vector<std::string_view>> vec) {
+
+  auto typeOf =
+      [](const ParsedData &p) -> std::string { // Pass by const reference
+    size_t index = p.index();
+    std::vector<std::string> type_names{"integer", "fractional", "character",
+                                        "string",  "dictionary", "empty"};
+    // Ensure index is valid before accessing
+    if (index < type_names.size()) {
+      return type_names.at(index);
+    }
+    return "undefined";
+  };
+
+  // Processing and output
+  std::println("--- Processing Inputs ---");
+  for (auto item : vec) {
+    auto itemValue = item.at(0);
+    ParsedData p = process(item.at(0));
+    auto itemType = typeOf(p);
+    auto expected = item.at(1);
+    std::println("Input: \"{}\"", itemValue);
+    std::print("Output: ");
+    view(p);
+    std::println("Type: {}", itemType);
+    std::println("---");
+    if (itemType != expected) {
+      std::println("Expected: '{}'", expected);
+      break;
+    }
+  }
+}
+
+void test3() {
+  // stringviewToDict(std::string_view input) -> std::variant<Dict, bool>
+  auto typeOf = [](std::variant<Dict, bool> p) -> std::string {
+    size_t index = p.index();
+    std::vector<std::string> type{"dict", "false", "undefined"};
+    return index >= 0 && index < type.size() ? type.at(index) : type.back();
+  };
+
+  assert(typeOf(stringviewToDict("a")) == "false");
+  assert(typeOf(stringviewToDict("1")) == "false");
+  assert(typeOf(stringviewToDict("1 : 'a")) == "false");
+  assert(typeOf(stringviewToDict("'A' : 10")) == "dict");
+
+  auto a = stringviewToDict("'A' : 'hello'");
+  Dict b{"'A' ", " 'hello'"};
+  assert(typeOf(a) == "dict");
+  Dict c = std::get<Dict>(a);
+  assert(b.compare(std::get<Dict>(a)));
+}
+
+void test2() {
+  auto typeOf = [](std::variant<int, float, bool> p) -> std::string {
+    size_t index = p.index();
+    std::vector<std::string> type{"int", "float", "undefined"};
+    return index >= 0 && index < type.size() ? type.at(index) : type.back();
+  };
+
+  assert(typeOf(stringviewToNumber<int>("10")) == "int");
+  assert(typeOf(stringviewToNumber<int>("-10")) == "int");
+  assert(typeOf(stringviewToNumber<int>("+10")) == "int");
+  assert(typeOf(stringviewToNumber<int>("+ 10")) == "int");
+  assert(typeOf(stringviewToNumber<int>("10.5")) == "undefined");
+  assert(typeOf(stringviewToNumber<int>("10.")) == "undefined");
+  assert(typeOf(stringviewToNumber<float>("10")) == "int");
+  assert(typeOf(stringviewToNumber<float>("-10")) == "int");
+  assert(typeOf(stringviewToNumber<float>("+10")) == "int");
+  assert(typeOf(stringviewToNumber<float>("+ 1 0")) == "int");
+  assert(typeOf(stringviewToNumber<float>("+ 1 . 0")) == "int");
+  assert(typeOf(stringviewToNumber<float>("10.5")) == "float");
+  assert(typeOf(stringviewToNumber<float>("-10.1")) == "float");
+  assert(typeOf(stringviewToNumber<float>("+ 10 . 5")) == "float");
+}
+
 void test1() {
 
   auto check = [](std::function<Data(std::string_view)> func, std::string value,
@@ -119,127 +241,4 @@ void test1() {
   assert(check(isGroup, "[A]", ""));
   assert(check(isGroup, "{{}}", "{{}}"));
   assert(check(isGroup, "{A}", "{A}"));
-}
-
-auto test2() {
-  auto typeOf = [](std::variant<int, float, bool> p) -> std::string {
-    size_t index = p.index();
-    std::vector<std::string> type{"int", "float", "undefined"};
-    return index >= 0 && index < type.size() ? type.at(index) : type.back();
-  };
-
-  assert(typeOf(stringviewToNumber<int>("10")) == "int");
-  assert(typeOf(stringviewToNumber<int>("-10")) == "int");
-  assert(typeOf(stringviewToNumber<int>("+10")) == "int");
-  assert(typeOf(stringviewToNumber<int>("+ 10")) == "int");
-  assert(typeOf(stringviewToNumber<int>("10.5")) == "undefined");
-  assert(typeOf(stringviewToNumber<int>("10.")) == "undefined");
-  assert(typeOf(stringviewToNumber<float>("10")) == "int");
-  assert(typeOf(stringviewToNumber<float>("-10")) == "int");
-  assert(typeOf(stringviewToNumber<float>("+10")) == "int");
-  assert(typeOf(stringviewToNumber<float>("+ 1 0")) == "int");
-  assert(typeOf(stringviewToNumber<float>("+ 1 . 0")) == "int");
-  assert(typeOf(stringviewToNumber<float>("10.5")) == "float");
-  assert(typeOf(stringviewToNumber<float>("-10.1")) == "float");
-  assert(typeOf(stringviewToNumber<float>("+ 10 . 5")) == "float");
-}
-
-auto test3() {
-  // stringviewToDict(std::string_view input) -> std::variant<Dict, bool>
-  auto typeOf = [](std::variant<Dict, bool> p) -> std::string {
-    size_t index = p.index();
-    std::vector<std::string> type{"dict", "false", "undefined"};
-    return index >= 0 && index < type.size() ? type.at(index) : type.back();
-  };
-
-  assert(typeOf(stringviewToDict("a")) == "false");
-  assert(typeOf(stringviewToDict("1")) == "false");
-  assert(typeOf(stringviewToDict("1 : 'a")) == "false");
-  assert(typeOf(stringviewToDict("'A' : 10")) == "dict");
-
-  auto a = stringviewToDict("'A' : 'hello'");
-  Dict b{"'A' ", " 'hello'"};
-  assert(typeOf(a) == "dict");
-  Dict c = std::get<Dict>(a);
-  assert(b.compare(std::get<Dict>(a)));
-}
-
-auto test4() {
-
-  auto typeOf =
-      [](const ParsedData &p) -> std::string { // Pass by const reference
-    size_t index = p.index();
-    std::vector<std::string> type_names{"integer", "fractional", "character",
-                                        "string",  "dictionary", "empty"};
-    // Ensure index is valid before accessing
-    if (index < type_names.size()) {
-      return type_names.at(index);
-    }
-    return "undefined";
-  };
-
-  // Input
-  std::vector<std::vector<std::string_view>> data{
-      {"0", "integer"},      // integer
-      {"-1", "integer"},     // negative integer
-      {".5", "fractional"},  // fractional number (leading dot)
-      {"5.", "integer"},     // integer, number (trailing dot)
-      {"+.5", "fractional"}, // fractional number (with sign and leading dot)
-      {"2.5", "fractional"}, // fractional number
-      {"'A'", "character"},  // character
-      {"'Hello'", "string"}, // string
-      {"'Hello World'", "string"},                       // string with space
-      {"{}", "empty"},                                   // Empty group
-      {"{10,11,12,13,14,15}", "integer"},                // vector of integers
-      {"{0.1,1.2,2.3,3.4,4.5,5.6}", "fractional"},       // vector of floats
-      {"{-1, -2, +3, +4, 5, -10}", "integer"},           // vector of integers
-      {"{1, 2.5, +3, 4, -5, 6, 7.9, 10}", "fractional"}, // vector of fractional
-      {"{'A', 'B', 'C', '1.5', '+10.5'}", "string"},     // vector of strings
-      {"{'a' : '1', 'b' : 'Hi'}", "dictionary"},         // dictionary
-      {"{'K1' : 10, 'K2' : -2.5, 'K3' : 'Hi'}", "dictionary"}, // dictionary
-      {" '  some string  ' ", "string"},  // String with external whitespace
-      {" {-1 , +2.5, 'test'} ", "string"} // Mixed
-  };
-
-  // Processing and output
-  std::println("--- Processing Inputs ---");
-  for (auto item : data) {
-    auto itemValue = item.at(0);
-    ParsedData p = process(item.at(0));
-    auto itemType = typeOf(p);
-    auto expected = item.at(1);
-    std::println("Input: \"{}\"", itemValue);
-    std::print("Output: ");
-    view(p);
-    std::println("Type: {}", itemType);
-    std::println("---");
-    if (itemType != expected) {
-      std::println("Expected: '{}'", expected);
-      break;
-    }
-  }
-}
-
-auto test() {
-  // Simple check
-  test1();
-
-  // Check stringviewToNumber
-  test2();
-
-  // Check stringviewToDict
-  test3();
-
-  // Check processing
-  test4();
-
-  std::println("Test completed!");
-}
-
-// --- Main ---
-auto main() -> int {
-
-  test4();
-
-  return 0;
 }
