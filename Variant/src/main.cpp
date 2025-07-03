@@ -27,6 +27,8 @@ template <class... Ts> struct overloads : Ts... {
   using Ts::operator()...;
 };
 
+inline void line(unsigned n, char c) { std::println("{}", std::string(n, c)); }
+
 // Function to view and print the contents of a variant container
 auto view(const auto v) {
   const auto visitor = overloads{
@@ -39,7 +41,7 @@ auto view(const auto v) {
       [](const std::string &value) { return std::format("\"{}\"", value); },
   };
 
-  std::println("{}", std::string(80, '-'));
+  line(80, '-');
   for (const auto &elem : v) {
     std::println("{} : {}", std::visit(visitor, elem),
                  variantType.at(elem.index()));
@@ -50,27 +52,51 @@ auto main() -> int {
 
   // Using std::array
   std::array<Variant, 7> var_array;
+  std::println("Size of Variant       : {} bytes", sizeof(Variant));
+  std::println("Size of std::monostate: {} bytes", sizeof(std::monostate));
+  std::println("Size of int           : {} bytes", sizeof(int));
+  std::println("Size of float         : {} bytes", sizeof(float));
+  std::println("Size of double        : {} bytes", sizeof(double));
+  std::println("Size of bool          : {} bytes", sizeof(bool));
+  std::println("Size of char          : {} bytes", sizeof(char));
+  std::println("Size of std::string   : {} bytes", sizeof(std::string));
 
   assert(std::holds_alternative<std::monostate>(var_array.at(0)) &&
          var_array.at(0).index() == None);
 
   var_array[0] = 10;
   assert(var_array.at(0).index() == Integer);
+  std::println("Size of var_array[0]  : {}  bytes (int)", sizeof(var_array[0]));
 
   var_array[0] = 10.5f;
   assert(var_array.at(0).index() == Float);
+  std::println("Size of var_array[0]  : {} bytes (float)",
+               sizeof(var_array[0]));
 
   var_array[0] = 10.5;
   assert(var_array.at(0).index() == Double);
+  std::println("Size of var_array[0]  : {} bytes (double)",
+               sizeof(var_array[0]));
 
   var_array[0] = false;
   assert(var_array.at(0).index() == Boolean);
+  std::println("Size of var_array[0]  : {} bytes (bool)", sizeof(var_array[0]));
 
   var_array[0] = 'a';
   assert(var_array.at(0).index() == Character);
+  std::println("Size of var_array[0]  : {} bytes (char)", sizeof(var_array[0]));
 
-  var_array[1] = {"STR"};
-  assert(var_array.at(1).index() == String);
+  var_array[0] = {"STR"};
+  assert(var_array.at(0).index() == String);
+  std::println("Size of var_array[0]  : {} bytes (std::string)",
+               sizeof(var_array[0]));
+
+  var_array[0] = std::monostate{};
+  assert(var_array.at(0).index() == None);
+  std::println("Size of var_array[0]  : {} bytes (std::monostate)",
+               sizeof(var_array[0]));
+
+  line(80, '-');
 
   // std::get_if
   if (int *p_val = std::get_if<int>(&var_array.front())) {
