@@ -3,6 +3,7 @@
 #include <iostream>
 #include <print>
 
+// Example 01
 template <typename T>
 concept Greater = requires(T a, T b) {
   { a > b } -> std::same_as<bool>;
@@ -10,7 +11,7 @@ concept Greater = requires(T a, T b) {
   { a < b } -> std::same_as<bool>;
 };
 
-template <Greater T> void IsGreater(T a, T b) {
+template <Greater T> void isGreater(T a, T b) {
   auto res = a <=> b;
   // overloading std::formatter to use std::print, didn't work!
   std::cout << "(" << a << "," << b << "): ";
@@ -43,19 +44,60 @@ struct Person {
   }
 };
 
+// Example 02
+template <typename T>
+concept IsClass = std::is_class_v<T>;
+
+template <IsClass T> void isClass(T obj) {
+  std::println("Rule satisfied! Processing a class object ...");
+}
+
+class Test_Class {};
+struct Test_Struct {};
+
+// Example 03
+template <typename T>
+concept Rule = requires(T obj) {
+  { obj.getAttribute() } -> std::same_as<int>;
+};
+
+template <Rule T> void check(const T &obj) {
+  std::println("Rule satisfied! Integer attribute = {}", obj.getAttribute());
+}
+
+class Test_Rule {
+  int attribute;
+
+public:
+  Test_Rule(int attribute) : attribute(std::move(attribute)) {}
+
+  auto getAttribute() const -> int { return attribute; }
+};
+
 auto main() -> int {
   std::println("Modern C++ : Concepts");
 
-  IsGreater(10, 15);
-  IsGreater(10.5, 10.4);
-  IsGreater(true, false);
-  IsGreater("A", "B");
-  IsGreater('0', '9');
-  IsGreater(1, 1);
+  // Example 01
+  isGreater(10, 15);
+  isGreater(10.5, 10.4);
+  isGreater(true, false);
+  isGreater("A", "B");
+  isGreater('0', '9');
+  isGreater(1, 1);
 
   Person p1{"Name1", 10};
   Person p2{"Name2", 10};
-  IsGreater(p1, p2);
+  isGreater(p1, p2);
+
+  isGreater(Person{"Name3", 25}, {"Name3", 20});
+
+  // Example 02
+  isClass(Test_Class{});
+  isClass(Test_Struct{});
+  isClass(std::string{});
+
+  // Example 03
+  check(Test_Rule(-10));
 
   return 0;
 }
