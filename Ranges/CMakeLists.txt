@@ -1,0 +1,15 @@
+cmake_minimum_required(VERSION 3.25 FATAL_ERROR)
+
+project(Ranges_Training LANGUAGES CXX)
+
+set(PROGRAM_NAME test_ranges)
+
+set(CMAKE_CXX_STANDARD 26)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF) 
+
+set(SOURCES src/main.cpp)
+
+add_executable(${PROGRAM_NAME} ${SOURCES})
+
+install(TARGETS ${PROGRAM_NAME} LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
