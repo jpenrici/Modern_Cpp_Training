@@ -29,12 +29,17 @@ auto main() -> int {
     (func3(std::forward<Ts>(ts)), ...);
   };
 
+  // Example 5: Lambda with optional ().
+  auto msg = [] { return "Lambda with optional ()."; };
+  auto func5 = [&] { std::println("func5: {}", msg()); };
+
   // Test
   func1();
   func2();
   func2(3);
   func3(0, 1.1f, 2.3, 'a', "Modern");
   func4("Lambda", 'z', 9, 7.1, 0x10, true);
+  func5();
 
   return 0;
 }
