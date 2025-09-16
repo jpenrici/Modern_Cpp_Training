@@ -59,5 +59,35 @@ auto main() -> int {
   assert(v6[2] == 5);
   std::println("{}", v6);
 
+  // Cards in the deck
+  std::vector<std::string> ranks = {"2",     "3",    "4",  "5",  "6",
+                                    "7",     "8",    "9",  "10", "Jack",
+                                    "Queen", "King", "Ace"};
+  std::vector<std::string> suits = {"Hearts", "Diamonds", "Clubs", "Spades"};
+
+  // std::ranges::views::cartesian_product
+  // Combines all elements of the 1st range with all elements of the 2sd range.
+  std::print("{{");
+  for (const auto &[rank, suit] :
+       std::ranges::views::cartesian_product(ranks, suits)) {
+    std::print("{} of {}; ", rank, suit);
+  }
+  std::println("}}\n");
+
+  // std::ranges::views::zip
+  // Combines corresponding elements (by position) from each range.
+  // But zip only iterates up to the length of the shortest range.
+  std::print("{{");
+  for (const auto &[rank, suit] : std::ranges::views::zip(ranks, suits)) {
+    std::print("{} of {}; ", rank, suit);
+  }
+  std::println("}}");
+
+  for (const auto &[value1, value2] : std::ranges::views::zip(
+           std::vector<char>{'A', 'B', 'C', 'D'}, std::vector<int>{1, 3, 2})) {
+    std::print("({} : {}) ", value1, value2);
+  }
+  std::println();
+
   return 0;
 }
