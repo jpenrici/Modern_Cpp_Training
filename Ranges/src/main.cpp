@@ -89,5 +89,22 @@ auto main() -> int {
   }
   std::println();
 
+  // std::ranges::views::join_with
+  std::string original = "test 01 2025 09 17.html";
+  auto result = std::views::split(original, ' ') |
+                std::ranges::views::join_with('_') |
+                std::ranges::to<std::string>();
+  std::println("'{}' --> '{}'", original, result);
+
+  // std::views::repeat
+  std::string str(5, '+'); // string(count, char)
+  std::println("{}", str);
+
+  auto cch = std::views::repeat("C++", 5); // const char *
+  for (auto s : cch) {
+    std::print("{} ", s);
+  }
+  std::println();
+
   return 0;
 }
