@@ -106,5 +106,37 @@ auto main() -> int {
   }
   std::println();
 
+  // std::ranges::dangling
+  auto process_range = [](auto &&R_ref, char value) {
+    auto R_ref_type = typeid(std::decay_t<decltype(R_ref)>).name();
+    auto result =
+        std::ranges::find(std::forward<decltype(R_ref)>(R_ref), value);
+    if constexpr (std::is_same_v<decltype(result), std::ranges::dangling>) {
+      // Warning handling for unsafe ranges
+      std::println(
+          "[TYPE: {}] Result is std::ranges::dangling (WARNING: Non-borrowed "
+          "temporary range used!)",
+          R_ref_type);
+    } else {
+      // Normal iteration logic (only instantiated for valid iterators)
+      if (result != std::ranges::end(R_ref)) {
+        std::println("[TYPE: {}] : Value '{}' found: '{}'", R_ref_type, value,
+                     *result);
+      } else {
+        std::println("[TYPE: {}] : Value '{}' not found.", R_ref_type, value);
+      }
+    }
+  };
+
+  // Borrowed range
+  process_range(std::string_view{"alpha"}, 'a');
+  process_range(std::string_view{"alpha"}, 'z');
+
+  // Non Borrowed range
+  process_range(std::vector<char>{'a', 'b', 'c'}, 'b'); // vector rvalue
+
+  auto vec_lvalue = std::vector<char>{'a', 'b', 'c'};
+  process_range(vec_lvalue, 'b');
+
   return 0;
 }
