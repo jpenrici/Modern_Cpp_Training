@@ -1,3 +1,4 @@
+#include <flat_map>
 #include <flat_set>
 #include <print>
 #include <vector>
@@ -30,6 +31,29 @@ auto main() -> int {
   std::println("Value {}: {}", value,
                flat_set_list.contains(value) ? "Correct search!"
                                              : "Search failed!");
+
+  // std::flat_map
+  std::flat_map<std::string, int> score = {
+      {"Alice", 1040}, {"Emely", 2580}, {"Bob", 7052}};
+
+  score["James"] = 6239;
+  score.insert({"William", 5565});
+
+  for (const auto &element : score) {
+    std::println("{} : {} points", element.first, element.second);
+  }
+
+  std::string name{"Bob"};
+  try {
+    int p = score.at(name);
+    std::println("{} : {} points", name, p);
+  } catch (const std::out_of_range &e) {
+    std::println("{} not found!", name);
+  }
+
+  std::println("{} : {} points", name,
+               score.contains(name) ? std::to_string(score.at(name))
+                                    : "not found");
 
   return 0;
 }
