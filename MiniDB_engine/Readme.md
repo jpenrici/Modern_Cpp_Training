@@ -1,4 +1,4 @@
-# MiniDB_engine — Scaffold Scripts
+# mini_db_engine — Scaffold Scripts
 
 Two Perl scripts that generate the initial directory layout and stub files
 for the **mini_db_engine** project: a minimal, in-memory database engine
@@ -17,8 +17,8 @@ correctly, before any real implementation work begins.
 | `generate_project.pl` | Entry point. Creates `mini_db_engine/{src,test,dev}` and calls `init_project_files.pl`. |
 | `init_project_files.pl`         | Writes the stub `CMakeLists.txt`, `.cppm` module partitions, `main.cpp`, smoke test, and `dev/` tooling. Can also be run standalone. |
 
-You normally only ever run `generate_project.pl` directly; it locates and 
-invokes `init_project_files.pl` for you.
+You normally only ever run `generate_project.pl` directly; it
+locates and invokes `init_project_files.pl` for you.
 
 ## Requirements
 
@@ -62,8 +62,14 @@ regular user's workspace. Run them as your normal user account.
 ```
 mini_db_engine/
 ├── CMakeLists.txt            # top-level build: modules library + main exe + tests
+├── bin/                       # created by the build (not by these scripts) —
+│   │                           # every executable lands here directly, via
+│   │                           # CMAKE_RUNTIME_OUTPUT_DIRECTORY, so you don't
+│   │                           # have to reach into build/ to run anything
+│   ├── mini_db_engine
+│   └── smoke_test
 ├── src/
-│   ├── main.cpp                # entry point, `import db;`
+│   ├── main.cpp               # entry point, `import db;`
 │   ├── db.cppm                 # primary module interface, re-exports all partitions
 │   ├── db-core.cppm            # :core        — RowId and shared vocabulary (stub)
 │   ├── db-storage.cppm         # :storage     — PMR / columnar storage (stub)
@@ -83,7 +89,12 @@ mini_db_engine/
 All `.cppm` files contain minimal, valid placeholder types (e.g.
 `PlaceholderIndex`, `PlaceholderWal`) — enough for the module graph to
 compile and link, nothing more. Real subsystem logic is added later, on
-top of this scaffold.
+top of this scaffold. `bin/` itself is not created by the scaffold
+scripts — it only appears once you actually build, since
+`CMAKE_RUNTIME_OUTPUT_DIRECTORY` is set to `${CMAKE_SOURCE_DIR}/bin` in
+the generated `CMakeLists.txt`. This is a placeholder convenience, not a
+real installation layout — a proper `install()` rule is expected to
+replace it later.
 
 ## Building the generated project
 
@@ -93,13 +104,21 @@ bash dev/build.sh
 ```
 
 This configures with `-G Ninja` (required for reliable C++ modules
-dependency scanning), builds, and runs `ctest`.
+dependency scanning), builds, and runs `ctest`. `dev/build.sh` itself
+refuses to run as root (checking `$EUID`), so that a root invocation
+can't cascade root privileges down into cmake, ninja, the compiler, and
+every test process it spawns.
 
-Two things worth checking against your actual environment before relying
+Once built, both binaries are directly runnable without entering `build/`:
+
+```bash
+./bin/mini_db_engine     # mini_db_engine bootstrap OK: true
+./bin/smoke_test         # smoke_test passed
+```
+
+One thing worth checking against your actual environment before relying
 on this:
 
-- `dev/build.sh` passes `-DCMAKE_CXX_COMPILER=g++-16`. Adjust this if
-  `g++` already resolves to GCC 16 on your system.
 - `db-core.cppm` and `db-storage.cppm` use a global module fragment
   (`module; #include <cstddef>;`) instead of `import std;`, to sidestep
   known instabilities around the standard library module in recent GCC

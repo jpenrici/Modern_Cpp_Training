@@ -3,7 +3,7 @@
 # init_project_files.pl
 #
 # Populates a "mini_db_engine" project root (already scaffolded by
-# generate_project_hierarchy.pl) with minimal, valid stub files:
+# generate_project.pl) with minimal, valid stub files:
 #
 #   - CMakeLists.txt (+ test/CMakeLists.txt)
 #   - src/db.cppm and its partitions (:core, :storage, :index, :wal,
@@ -13,7 +13,7 @@
 #   - dev/README.md and dev/build.sh (a convenience configure+build+test
 #     helper script)
 #
-# Intended to be called by generate_project_hierarchy.pl, but can also be
+# Intended to be called by generate_project.pl, but can also be
 # run standalone:
 #
 #   perl init_project_files.pl /path/to/mini_db_engine
@@ -92,7 +92,7 @@ sub mark_executable ($path) {
 
 # Refuses to proceed when run as root (real or effective uid 0), either
 # directly or via sudo/su. This script can also be invoked standalone
-# (not just via generate_project_hierarchy.pl), so it needs its own
+# (not just via generate_project.pl), so it needs its own
 # guard rather than relying on the caller's check.
 sub guard_against_root {
     if ( $< == 0 || $> == 0 ) {
@@ -107,12 +107,19 @@ sub guard_against_root {
 
 sub cmake_top_level_content {
     return <<'CMAKE';
-cmake_minimum_required(VERSION 3.28)
+cmake_minimum_required(VERSION 3.28 FATAL_ERROR)
+
 project(mini_db_engine LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Place every executable directly under <project_root>/bin, regardless of
+# build type or generator, so binaries can be run without reaching into
+# the build/ tree. This is a placeholder convenience only -- a real
+# `install()` rule / staged installation is expected to replace it later.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 
 # C++20/23 module dependency scanning (P1689). Reliable support currently
 # requires the Ninja generator (or MSVC) -- not Unix Makefiles.
@@ -144,8 +151,11 @@ target_sources(mini_db_engine_modules
 
 target_compile_options(mini_db_engine_modules PRIVATE -Wall -Wextra -Wpedantic)
 
+# db:index's demos/tests use std::thread (the module itself does not).
+find_package(Threads REQUIRED)
+
 add_executable(mini_db_engine src/main.cpp)
-target_link_libraries(mini_db_engine PRIVATE mini_db_engine_modules)
+target_link_libraries(mini_db_engine PRIVATE mini_db_engine_modules Threads::Threads)
 
 enable_testing()
 add_subdirectory(test)
@@ -155,7 +165,7 @@ CMAKE
 sub cmake_test_content {
     return <<'CMAKE';
 add_executable(smoke_test smoke_test.cpp)
-target_link_libraries(smoke_test PRIVATE mini_db_engine_modules)
+target_link_libraries(smoke_test PRIVATE mini_db_engine_modules Threads::Threads)
 
 add_test(NAME smoke_test COMMAND smoke_test)
 CMAKE
@@ -356,10 +366,24 @@ sub dev_build_script_content {
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Convenience script: configure with Ninja, build, then run the smoke test.
-# Adjust CMAKE_CXX_COMPILER if g++-16 is not the default `g++` on this system.
+# Refuse to run as root (real or effective uid 0), whether invoked
+# directly or via sudo/su. This script shells out to cmake, ninja and
+# ctest, which would in turn spawn the compiler and every build/test
+# process as root too -- a cascade of unnecessary root privilege that
+# this guard exists to stop at the very first step.
+if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    echo "Refusing to run as root (uid 0). Re-run as a regular user." >&2
+    exit 1
+fi
 
-cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=g++-16
+# Convenience script: configure with Ninja, build, then run the smoke test.
+# CMAKE_CXX_STANDARD=26 is passed explicitly here (rather than pinning a
+# versioned compiler binary like g++-16) so this keeps working as long as
+# whichever `g++` is first on PATH supports C++26.
+
+cmake -S . -B build -G Ninja \
+    -DCMAKE_CXX_COMPILER=g++ \
+    -DCMAKE_CXX_STANDARD=26
 cmake --build build
 ctest --test-dir build --output-on-failure
 SH
