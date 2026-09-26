@@ -46,9 +46,13 @@ target_compile_options(mini_db_engine_modules PRIVATE -Wall -Wextra -Wpedantic)
 # db:index's demos/tests use std::thread (the module itself does not).
 find_package(Threads REQUIRED)
 
+set(MINI_DB_ENGINE_RUNTIME_LINK_OPTIONS -static-libstdc++ -static-libgcc)
+
 add_executable(mini_db_engine src/main.cpp)
 target_link_libraries(mini_db_engine PRIVATE mini_db_engine_modules
                                              Threads::Threads)
+target_link_options(mini_db_engine PRIVATE
+                    ${MINI_DB_ENGINE_RUNTIME_LINK_OPTIONS})
 
 enable_testing()
 add_subdirectory(test)

@@ -1,4 +1,8 @@
+#include <atomic>
 #include <cassert>
+#include <chrono>
+#include <coroutine>
+#include <cstdint>
 #include <optional>
 #include <print>
 #include <span>
@@ -7,6 +11,12 @@
 #include <vector>
 
 import db;
+
+auto square_on(db::concurrency::ThreadPool& pool, int n) -> db::concurrency::Task<int>
+{
+    co_await db::concurrency::ScheduleOn { pool };
+    co_return n* n;
+}
 
 // Smoke test: checks that the module graph links, the facade type is
 // constructible, :core's vocabulary behaves as expected, and :storage's
@@ -64,6 +74,58 @@ auto main() -> int
 
     assert(row_count(table) == 2); // rejected rows must not have partially inserted
 
+    // :exec -- lazy scan/filter/project over the same table, plus some
+    // more rows so filtering actually excludes something.
+    using namespace db::exec;
+
+    const Value extra_rows[][2] = {
+        { Value { std::int64_t { 3 } }, Value { std::pmr::string { "carol" } } },
+        { Value { std::int64_t { 4 } }, Value { std::pmr::string { "dave" } } },
+        { Value { std::int64_t { 5 } }, Value { std::pmr::string { "erin" } } },
+        { Value { std::int64_t { 6 } }, Value { std::pmr::string { "frank" } } },
+    };
+    for (const auto& row : extra_rows) {
+        assert(insert_row(table, row).has_value());
+    }
+    assert(row_count(table) == 6);
+
+    std::vector<RowId> scanned;
+    for (auto row : scan(table)) {
+        scanned.push_back(row);
+    }
+    assert(scanned.size() == 6);
+    for (RowId i = 0; i < 6; ++i) {
+        assert(scanned[i] == i);
+    }
+
+    std::vector<RowId> even_id_rows;
+    for (auto row : filter(scan(table), [&table](RowId row) {
+             return std::get<std::int64_t>(get_cell(table, row, 0)) % 2 == 0;
+         })) {
+        even_id_rows.push_back(row);
+    }
+    assert(even_id_rows.size() == 3); // ids 2, 4, 6 -> rows 1, 3, 5
+
+    int projected_count = 0;
+    for (const auto& values : project(filter(scan(table),
+                                          [&table](RowId row) {
+                                              return std::get<std::int64_t>(get_cell(table, row, 0)) % 2 == 0;
+                                          }),
+             table, { 0, 1 })) {
+        assert(values.size() == 2);
+        const auto id = std::get<std::int64_t>(values[0]);
+        assert(id % 2 == 0);
+        ++projected_count;
+    }
+    assert(projected_count == 3);
+
+    // Laziness: a Generator that's never iterated must do nothing at all
+    // -- if scan() ran eagerly, this alone would already have produced
+    // (and dropped) every RowId.
+    {
+        [[maybe_unused]] auto unused = scan(table);
+    }
+
     // :index -- single-threaded correctness
     using namespace db::index;
 
@@ -112,6 +174,79 @@ auto main() -> int
             assert(lookup(index, Value { key }) == std::optional<RowId> { static_cast<RowId>(key) });
         }
     }
+
+    // :wal -- lock-free MPSC ring buffer + coroutine flusher, under real
+    // concurrency. This exercises the same producer/consumer pattern as
+    // :index's stress test, but with the flusher coroutine as the single
+    // consumer instead of a CAS loop.
+    using namespace db::wal;
+
+    Wal wal(64); // small on purpose: forces wraparound.
+    run_flusher(wal);
+
+    constexpr int wal_thread_count = 8;
+    constexpr int records_per_thread = 2000;
+
+    std::vector<std::thread> wal_producers;
+    wal_producers.reserve(wal_thread_count);
+    for (int t = 0; t < wal_thread_count; ++t) {
+        wal_producers.emplace_back([&wal, t]() {
+            for (int i = 0; i < records_per_thread; ++i) {
+                const auto row = static_cast<RowId>(t * records_per_thread + i);
+                while (!try_append(wal, WalRecord { .row = row, .payload = Value { static_cast<std::int64_t>(row) } })) {
+                    std::this_thread::yield(); // buffer full; back off and retry
+                }
+            }
+        });
+    }
+    for (auto& producer : wal_producers) {
+        producer.join();
+    }
+
+    request_stop(wal);
+
+    // Asynchronous drain: poll until the flusher (running on whichever
+    // thread last touched it) has caught up, instead of assuming
+    // request_stop() itself waits for that.
+    constexpr auto expected_durable_count = static_cast<std::size_t>(wal_thread_count * records_per_thread);
+    for (int i = 0; i < 2000 && stats(wal).durable_count < expected_durable_count; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    const auto wal_stats = stats(wal);
+    assert(wal_stats.durable_count == expected_durable_count);
+
+    // :concurrency -- Task<T> hopping onto a thread pool, driven via
+    // sync_wait from this ordinary (non-coroutine) function, under real
+    // concurrent load from multiple calling threads.
+    using namespace db::concurrency;
+
+    ThreadPool pool(4);
+
+    assert(sync_wait(square_on(pool, 7)) == 49);
+
+    constexpr int concurrency_thread_count = 8;
+    constexpr int tasks_per_thread = 300;
+    std::atomic<int> mismatches { 0 };
+
+    std::vector<std::thread> callers;
+    callers.reserve(concurrency_thread_count);
+    for (int t = 0; t < concurrency_thread_count; ++t) {
+        callers.emplace_back([&pool, &mismatches, t]() {
+            for (int i = 0; i < tasks_per_thread; ++i) {
+                const int n = t * tasks_per_thread + i;
+                if (sync_wait(square_on(pool, n)) != n * n) {
+                    mismatches.fetch_add(1, std::memory_order_relaxed);
+                }
+            }
+        });
+    }
+    for (auto& caller : callers) {
+        caller.join();
+    }
+
+    assert(mismatches.load() == 0);
+    assert(stats(pool).tasks_processed == static_cast<std::size_t>(1 + concurrency_thread_count * tasks_per_thread));
 
     std::println("smoke_test passed");
     return 0;

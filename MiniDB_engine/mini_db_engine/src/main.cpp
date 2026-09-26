@@ -1,4 +1,6 @@
+#include <atomic>
 #include <chrono>
+#include <coroutine>
 #include <cstdint>
 #include <print>
 #include <span>
@@ -7,6 +9,14 @@
 #include <vector>
 
 import db;
+
+// A tiny Task<int> that hops onto the thread pool before computing its
+// result -- everything after the co_await runs on a pool worker.
+auto square_on(db::concurrency::ThreadPool& pool, int n) -> db::concurrency::Task<int>
+{
+    co_await db::concurrency::ScheduleOn { pool };
+    co_return n* n;
+}
 
 auto main() -> int
 {
@@ -55,6 +65,28 @@ auto main() -> int
     const auto memory_stats = stats(table);
     std::println("bytes_in_use = {}, allocation_count = {}",
         memory_stats.bytes_in_use, memory_stats.allocation_count);
+
+    // Exercise the :exec partition: a few more rows so filtering has
+    // something to do, then a lazy scan -> filter -> project pipeline.
+    // Nothing here is materialized ahead of time -- each row is only
+    // touched as the range-for below actually pulls it through.
+    using namespace db::exec;
+
+    const char* extra_names[] = { "carol", "dave", "erin", "frank" };
+    for (int i = 0; i < 4; ++i) {
+        const Value extra_row[] = { Value { std::int64_t { 10 + i } }, Value { std::pmr::string { extra_names[i] } } };
+        (void)insert_row(table, extra_row);
+    }
+    std::println("row_count after extra inserts = {}", row_count(table));
+
+    std::println("even-id rows (scan -> filter -> project):");
+    auto even_ids = filter(scan(table), [&table](RowId row) {
+        return std::get<std::int64_t>(get_cell(table, row, 0)) % 2 == 0;
+    });
+    for (const auto& values : project(std::move(even_ids), table, { 0, 1 })) {
+        std::println("  id={}, name={}", std::get<std::int64_t>(values[0]),
+            std::get<std::pmr::string>(values[1]));
+    }
 
     // Exercise the :index partition: a lock-free (Value -> RowId) lookup.
     // First single-threaded, then under real concurrency, to actually
@@ -139,6 +171,42 @@ auto main() -> int
     std::println("wal durable_count        = {}", wal_stats.durable_count);
     std::println("wal enqueue_retry_count  = {}", wal_stats.enqueue_retry_count);
     std::println("wal full_rejection_count = {}", wal_stats.full_rejection_count);
+
+    // Exercise the :concurrency partition: a Task<T> that hops onto a
+    // thread pool via ScheduleOn, and sync_wait() bridging back to this
+    // ordinary (non-coroutine) main() function.
+    using namespace db::concurrency;
+
+    ThreadPool pool(4);
+
+    const int squared = sync_wait(square_on(pool, 7));
+    std::println("square_on(pool, 7) -> {}", squared);
+
+    constexpr int concurrency_thread_count = 8;
+    constexpr int tasks_per_thread = 300;
+    std::atomic<int> mismatches { 0 };
+
+    std::vector<std::thread> callers;
+    callers.reserve(concurrency_thread_count);
+    for (int t = 0; t < concurrency_thread_count; ++t) {
+        callers.emplace_back([&pool, &mismatches, t]() {
+            for (int i = 0; i < tasks_per_thread; ++i) {
+                const int n = t * tasks_per_thread + i;
+                if (sync_wait(square_on(pool, n)) != n * n) {
+                    mismatches.fetch_add(1, std::memory_order_relaxed);
+                }
+            }
+        });
+    }
+    for (auto& caller : callers) {
+        caller.join();
+    }
+
+    const auto pool_stats = stats(pool);
+    std::println("pool tasks_processed     = {}", pool_stats.tasks_processed);
+    std::println("pool enqueue_retry_count = {}", pool_stats.enqueue_retry_count);
+    std::println("pool dequeue_retry_count = {}", pool_stats.dequeue_retry_count);
+    std::println("pool mismatches          = {}", mismatches.load());
 
     return 0;
 }

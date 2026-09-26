@@ -1,5 +1,7 @@
+#include <atomic>
 #include <cassert>
 #include <chrono>
+#include <coroutine>
 #include <cstdint>
 #include <optional>
 #include <print>
@@ -9,6 +11,12 @@
 #include <vector>
 
 import db;
+
+auto square_on(db::concurrency::ThreadPool& pool, int n) -> db::concurrency::Task<int>
+{
+    co_await db::concurrency::ScheduleOn { pool };
+    co_return n* n;
+}
 
 // Smoke test: checks that the module graph links, the facade type is
 // constructible, :core's vocabulary behaves as expected, and :storage's
@@ -155,6 +163,38 @@ auto main() -> int
 
     const auto wal_stats = stats(wal);
     assert(wal_stats.durable_count == expected_durable_count);
+
+    // :concurrency -- Task<T> hopping onto a thread pool, driven via
+    // sync_wait from this ordinary (non-coroutine) function, under real
+    // concurrent load from multiple calling threads.
+    using namespace db::concurrency;
+
+    ThreadPool pool(4);
+
+    assert(sync_wait(square_on(pool, 7)) == 49);
+
+    constexpr int concurrency_thread_count = 8;
+    constexpr int tasks_per_thread = 300;
+    std::atomic<int> mismatches { 0 };
+
+    std::vector<std::thread> callers;
+    callers.reserve(concurrency_thread_count);
+    for (int t = 0; t < concurrency_thread_count; ++t) {
+        callers.emplace_back([&pool, &mismatches, t]() {
+            for (int i = 0; i < tasks_per_thread; ++i) {
+                const int n = t * tasks_per_thread + i;
+                if (sync_wait(square_on(pool, n)) != n * n) {
+                    mismatches.fetch_add(1, std::memory_order_relaxed);
+                }
+            }
+        });
+    }
+    for (auto& caller : callers) {
+        caller.join();
+    }
+
+    assert(mismatches.load() == 0);
+    assert(stats(pool).tasks_processed == static_cast<std::size_t>(1 + concurrency_thread_count * tasks_per_thread));
 
     std::println("smoke_test passed");
     return 0;
