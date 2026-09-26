@@ -1,3 +1,5 @@
+#include <chrono>
+#include <cstdint>
 #include <print>
 #include <span>
 #include <thread>
@@ -92,6 +94,51 @@ auto main() -> int
     std::println("index publish_count         = {}", index_stats.publish_count);
     std::println("index retry_count           = {}", index_stats.retry_count);
     std::println("index leaked_snapshot_count = {}", index_stats.leaked_snapshot_count);
+
+    // Exercise the :wal partition: a lock-free MPSC ring buffer feeding a
+    // coroutine flusher. Producers publish concurrently; the flusher
+    // coroutine drains them, resumed directly by whichever producer
+    // thread wakes it -- watch it hop threads over its lifetime.
+    using namespace db::wal;
+
+    Wal wal(64); // small on purpose: makes wraparound (and, under load,
+    // full_rejection_count) actually observable.
+    run_flusher(wal); // starts eagerly; parks immediately since wal is empty
+
+    constexpr int wal_thread_count = 8;
+    constexpr int records_per_thread = 2000;
+    std::atomic<int> total_rejected { 0 };
+
+    std::vector<std::thread> wal_producers;
+    wal_producers.reserve(wal_thread_count);
+    for (int t = 0; t < wal_thread_count; ++t) {
+        wal_producers.emplace_back([&wal, &total_rejected, t]() {
+            for (int i = 0; i < records_per_thread; ++i) {
+                const auto row = static_cast<RowId>(t * records_per_thread + i);
+                while (!try_append(wal, WalRecord { .row = row, .payload = Value { static_cast<std::int64_t>(row) } })) {
+                    total_rejected.fetch_add(1, std::memory_order_relaxed);
+                    std::this_thread::yield(); // buffer full; back off and retry
+                }
+            }
+        });
+    }
+    for (auto& producer : wal_producers) {
+        producer.join();
+    }
+
+    request_stop(wal);
+
+    // request_stop() only guarantees the flusher wakes up and drains
+    // what's already published -- it runs asynchronously (possibly on
+    // whichever thread last touched it), so give it a moment to finish.
+    while (stats(wal).durable_count < static_cast<std::size_t>(wal_thread_count * records_per_thread)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    const auto wal_stats = stats(wal);
+    std::println("wal durable_count        = {}", wal_stats.durable_count);
+    std::println("wal enqueue_retry_count  = {}", wal_stats.enqueue_retry_count);
+    std::println("wal full_rejection_count = {}", wal_stats.full_rejection_count);
 
     return 0;
 }
