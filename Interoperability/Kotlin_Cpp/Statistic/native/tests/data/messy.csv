@@ -1,0 +1,9 @@
+# sample data with garbage
+1.0 5.5 8.4
+2.3
+
+abc,4.5;56.6 1000.2
+,,
+0.0
+1.2 1.0 1.0x NaN inf -
+0x1F @@ 1e999
