@@ -1,5 +1,3 @@
-// Statistic/native/include/statistic/stats_c_api.h
-
 /**
  * @file stats_c_api.h
  * @brief Public C API of statslib (the ONLY header meant for Kotlin/Native cinterop).
@@ -10,7 +8,7 @@
  *  - Every function returns a status code; results go through out-parameters.
  *  - Nothing is allocated by the library, so there is nothing to free.
  *
- * Linux only (GCC 14).
+ * Linux only (Debian 13, GCC 14).
  */
 #ifndef STATISTIC_STATS_C_API_H
 #define STATISTIC_STATS_C_API_H
@@ -25,23 +23,30 @@
 extern "C" {
 #endif
 
-/** Status codes returned by the functions of this API. */
-typedef enum StatsStatus {
-    STATS_OK = 0, /**< Success. */
-    STATS_ERR_NULL_ARGUMENT = 1, /**< `data` or `out` is NULL. */
-    STATS_ERR_INVALID_SIZE = 2, /**< `size` is negative. */
-    STATS_ERR_EMPTY_INPUT = 3, /**< `size` is zero. */
-    STATS_ERR_NON_FINITE = 4, /**< Input contains NaN or +/-infinity. */
-    STATS_ERR_OVERFLOW = 5, /**< A result does not fit in a double. */
-    STATS_ERR_INTERNAL = 6 /**< Unexpected failure (e.g. out of memory). */
-} StatsStatus;
+/**
+ * Status code returned by the functions of this API.
+ *
+ * Deliberately a plain int32_t with #define constants instead of a C enum:
+ * binding generators (Kotlin/Native cinterop, JNA, Panama, Swift...) map enums
+ * in different, version-dependent ways, whereas an integer plus integer macros
+ * always becomes a plain Int plus constants.
+ */
+typedef int32_t StatsStatus;
+
+#define STATS_OK 0                 /**< Success. */
+#define STATS_ERR_NULL_ARGUMENT 1  /**< `data` or `out` is NULL. */
+#define STATS_ERR_INVALID_SIZE 2   /**< `size` is negative. */
+#define STATS_ERR_EMPTY_INPUT 3    /**< `size` is zero. */
+#define STATS_ERR_NON_FINITE 4     /**< Input contains NaN or +/-infinity. */
+#define STATS_ERR_OVERFLOW 5       /**< A result does not fit in a double. */
+#define STATS_ERR_INTERNAL 6       /**< Unexpected failure (e.g. out of memory). */
 
 /** Summary statistics. Four plain doubles: 32 bytes, no padding. */
 typedef struct StatsResult {
     double mean;
     double median;
     double variance; /**< POPULATION variance (divides by n). */
-    double stddev; /**< sqrt(variance). */
+    double stddev;   /**< sqrt(variance). */
 } StatsResult;
 
 /**

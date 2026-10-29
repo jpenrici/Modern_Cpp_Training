@@ -7,7 +7,9 @@ import platform.posix.fopen
 import platform.posix.fputs
 import platform.posix.getpid
 import platform.posix.remove
-import statslib.StatsStatus
+import statslib.STATS_ERR_EMPTY_INPUT
+import statslib.STATS_ERR_NON_FINITE
+import statslib.STATS_ERR_OVERFLOW
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -46,7 +48,7 @@ class StatsInteropTest {
     @Test
     fun emptyInputIsRejected() {
         val e = assertFailsWith<StatsException> { DoubleArray(0).computeStats() }
-        assertEquals(StatsStatus.STATS_ERR_EMPTY_INPUT, e.status)
+        assertEquals(STATS_ERR_EMPTY_INPUT, e.status)
     }
 
     @Test
@@ -54,7 +56,7 @@ class StatsInteropTest {
         val e = assertFailsWith<StatsException> {
             doubleArrayOf(1.0, Double.NaN).computeStats()
         }
-        assertEquals(StatsStatus.STATS_ERR_NON_FINITE, e.status)
+        assertEquals(STATS_ERR_NON_FINITE, e.status)
     }
 
     @Test
@@ -62,7 +64,7 @@ class StatsInteropTest {
         val e = assertFailsWith<StatsException> {
             doubleArrayOf(Double.MAX_VALUE, Double.MAX_VALUE).computeStats()
         }
-        assertEquals(StatsStatus.STATS_ERR_OVERFLOW, e.status)
+        assertEquals(STATS_ERR_OVERFLOW, e.status)
     }
 
     @Test
@@ -85,7 +87,7 @@ class StatsInteropTest {
     fun messyFileEndToEnd() {
         // The 10 numbers of data/sample.csv plus 13 garbage tokens, irregular rows, CRLF.
         val text = "# sample data with garbage\n1.0 5.5 8.4\n2.3\n\nabc,4.5;56.6 1000.2\n,,\n" +
-            "0.0\r\n1.2 1.0 1.0x NaN inf -\n0x1F @@ 1e999\n"
+                "0.0\r\n1.2 1.0 1.0x NaN inf -\n0x1F @@ 1e999\n"
         val path = "/tmp/statistic_test_${getpid()}.csv"
 
         val file = fopen(path, "wb") ?: error("cannot create $path")
