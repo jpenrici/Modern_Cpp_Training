@@ -1,0 +1,20 @@
+# Statistic/src/nativeInterop/cinterop/statslib.def
+#
+# cinterop definition for libstatslib.so. The file name MUST match the cinterop
+# name declared in build.gradle.kts ("statslib"), which also fixes the old
+# statlib/statslib naming mismatch.
+#
+# What goes where:
+#  - Here:           header to import + the library name (-lstatslib).
+#  - build.gradle.kts: machine-specific paths (-I include dir, -L lib dir, rpath),
+#                    so this file stays portable.
+
+headers = statistic/stats_c_api.h
+
+# Only generate bindings for our own header, not for <stdint.h> and friends.
+headerFilter = statistic/**
+
+# Kotlin package of the generated bindings: `import statslib.*`
+package = statslib
+
+linkerOpts.linux = -lstatslib

@@ -55,14 +55,14 @@ if(STATISTIC_ENABLE_SANITIZERS)
 endif()
 
 add_library(statistic_core STATIC src/core/stats.cpp src/io/csv_reader.cpp)
-target_include_features(statistic_core PUBLIC src) # internal headers
+target_include_directories(statistic_core PUBLIC src) # internal headers
 target_compile_features(statistic_core PUBLIC cxx_std_23)
 target_link_libraries(statistic_core PUBLIC statistic_options)
 set_target_properties(statistic_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_library(statslib SHARED src/c_api/stats_c_api.cpp)
 target_include_directories(statslib PUBLIC include) # public C header only
-target_link_libraries(stastlib PRIVATE statistic_core)
+target_link_libraries(statslib PRIVATE statistic_core)
 set_target_properties(
   statslib
   PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${STATISTIC_LIB_OUTPUT_DIR}"
