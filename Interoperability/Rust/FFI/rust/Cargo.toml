@@ -1,0 +1,15 @@
+[package]
+name = "ffi_rust"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Rust side of the C++23 <-> Rust C-ABI bridge (standard library only)"
+
+[lib]
+name = "ffi_rust"
+# cdylib: shared library consumed by C++; rlib: lets integration tests link the crate.
+crate-type = ["cdylib", "rlib"]
+doctest = false # no doctests; keeps `cargo test` to the integration tests
+
+[profile.release]
+panic = "unwind" # required so catch_unwind can turn panics into error codes

@@ -1,0 +1,14 @@
+# Single source of truth for the error dictionary.
+# Format: CODE|NAME|MESSAGE   (lines starting with '#' and blank lines are ignored)
+# Consumed by scripts/gen_errors.pl, which generates:
+#   common/include/ffi_bridge/error_codes.h
+#   rust/src/error_codes.rs
+#   cpp/include/ffi_bridge/error_table.hpp
+100|OK|Operation completed successfully
+401|EMPTY_STRING|Input string is empty
+402|BUFFER_OVERFLOW|Size limit exceeded or output buffer too small
+403|INVALID_UTF8|Input is not valid UTF-8
+404|NULL_POINTER|Null pointer passed where a value is required
+405|UNKNOWN_CODE|Unknown error code
+406|ALIASED_BORROW|Shared and mutable borrows overlap
+500|INTERNAL_PANIC|Internal panic caught at the FFI boundary
