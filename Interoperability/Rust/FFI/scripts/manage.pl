@@ -866,6 +866,11 @@ my %COMMANDS = (
 );
 
 sub main(@args) {
+
+    if ($> == 0) {
+        die "[manage] Error: This script cannot be run with root privileges for security reasons.\n";
+    }
+
     my $command = shift(@args) // '';
     if ( $command eq '' || $command =~ /^(?:-h|--help|help)$/ ) {
         usage();
